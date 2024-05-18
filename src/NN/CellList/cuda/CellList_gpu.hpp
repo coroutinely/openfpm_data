@@ -419,6 +419,7 @@ public:
 		return CellList_gpu_ker<dim,T,ids_type,transform_type,false>(
 			numPartInCellPrefixSum.toKernel(),
 			sortedToUnsortedIndex.toKernel(),
+			unsortedToSortedIndex.toKernel(),
 			sortedToSortedIndexNoGhost.toKernel(),
 			rcutNeighborCellOffset.toKernel(),
 			p,
@@ -1087,6 +1088,7 @@ public:
 			neighborPartIndexFrom_To.toKernel(),
 			vecSparseCellIndex_PartIndex.toKernel(),
 			sortedToUnsortedIndex.toKernel(),
+			unsortedToSortedIndex.toKernel(),
 			sortedToSortedIndexNoGhost.toKernel(),
 			unitCellP2,
 			numCellDim,

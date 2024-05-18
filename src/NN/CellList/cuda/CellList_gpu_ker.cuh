@@ -2,17 +2,19 @@
 #define CELLLIST_GPU_KER_CUH_
 
 #include "NN/CellList/cuda/CellDecomposer_gpu_ker.cuh"
-
+#include "NN/CellList/CellList_util.hpp"
 
 template<unsigned int dim, typename ids_type>
 class NN_gpu_it_box
 {
 	const openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & numPartInCellPrefixSum;
 	const openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & sortedToUnsortedIndex;
+	const openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & unsortedToSortedIndex;
 	// const openfpm::vector_gpu_ker<aggregate<int>,memory_traits_inte> & boxNeighborCellOffset;
 	const int* __restrict__ boxNeighborCellOffset;
 
-
+	unsigned int config;
+	unsigned int partUnsortedIndex;
 	unsigned int boxNeighborCellOffset_i;
 	unsigned int cellPositionIndex;
 	unsigned int neighborPartIndexStart;
@@ -35,26 +37,45 @@ class NN_gpu_it_box
 
 public:
 	inline __device__ NN_gpu_it_box(
+		const size_t partUnsortedIndex,
 		const grid_key_dx<dim,ids_type> & cellPosition,
+		const unsigned int config,
 		const openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & numPartInCellPrefixSum,
 		const openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & sortedToUnsortedIndex,
+		const openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & unsortedToSortedIndex,
 		// const openfpm::vector_gpu_ker<aggregate<int>,memory_traits_inte> & boxNeighborCellOffset,
 		const int* __restrict__ boxNeighborCellOffset,
 		unsigned int boxNeighborCellOffsetSize,
 		const openfpm::array<ids_type,dim> & numCellDim)
-	: numPartInCellPrefixSum(numPartInCellPrefixSum),
+	: partUnsortedIndex(partUnsortedIndex),
+	config(config),
+	numPartInCellPrefixSum(numPartInCellPrefixSum),
 	sortedToUnsortedIndex(sortedToUnsortedIndex),
-	boxNeighborCellOffset(boxNeighborCellOffset),
-	boxNeighborCellOffsetSize(boxNeighborCellOffsetSize),
+	unsortedToSortedIndex(unsortedToSortedIndex),
 	cellPositionIndex(cid_<dim,ids_type,int>::get_cid(numCellDim,cellPosition)),
-	boxNeighborCellOffset_i(0),
-#if defined(__NVCC__)
-	neighborCellIndexAct(*(boxNeighborCellOffset+boxNeighborCellOffset_i))
-#else
-	neighborCellIndexAct(boxNeighborCellOffset[boxNeighborCellOffset_i])
-#endif
+	boxNeighborCellOffset(boxNeighborCellOffset),
+	boxNeighborCellOffsetSize(boxNeighborCellOffsetSize)
 	{
-		neighborPartIndexStart = numPartInCellPrefixSum.template get<0>(cellPositionIndex+this->neighborCellIndexAct);
+		// for symmetric case, use only second half of offsets array, which will contain
+		// non-negative offset values
+		if (config == CL_NON_SYMMETRIC) {
+			boxNeighborCellOffset_i = 0;
+		} else if (config == CL_SYMMETRIC) {
+			boxNeighborCellOffset_i = boxNeighborCellOffsetSize / 2;
+		}
+		
+		#if defined(__NVCC__)
+			neighborCellIndexAct = *(boxNeighborCellOffset+boxNeighborCellOffset_i);
+		#else
+			neighborCellIndexAct = boxNeighborCellOffset[boxNeighborCellOffset_i];
+		#endif
+
+		// in symmetric case, we start from central cell, from "middle" particle
+		if (config == CL_NON_SYMMETRIC) {
+			neighborPartIndexStart = numPartInCellPrefixSum.template get<0>(cellPositionIndex+this->neighborCellIndexAct);
+		} else if (config == CL_SYMMETRIC) {
+			neighborPartIndexStart = unsortedToSortedIndex.template get<0>(partUnsortedIndex);
+		}
 		neighborPartIndexStop = numPartInCellPrefixSum.template get<0>(cellPositionIndex+this->neighborCellIndexAct+1);
 
 		SelectValid();
@@ -111,8 +132,11 @@ class NN_gpu_it_radius
 {
 	const openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & numPartInCellPrefixSum;
 	const openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & sortedToUnsortedIndex;
+	const openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & unsortedToSortedIndex;
 	const openfpm::vector_gpu_ker<aggregate<int>,memory_traits_inte> & rcutNeighborCellOffset;
 
+	unsigned int config;
+	unsigned int partUnsortedIndex;
 	unsigned int rcutNeighborCellOffset_i;
 	unsigned int cellPositionIndex;
 	unsigned int neighborPartIndexStart;
@@ -134,19 +158,34 @@ class NN_gpu_it_radius
 
 public:
 	inline __device__ __host__ NN_gpu_it_radius(
+		const size_t partUnsortedIndex,
 		const grid_key_dx<dim,ids_type> & cellPosition,
+		const unsigned int config,
 		const openfpm::vector_gpu_ker<aggregate<int>,memory_traits_inte> & rcutNeighborCellOffset,
 		const openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & numPartInCellPrefixSum,
 		const openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & sortedToUnsortedIndex,
+		const openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & unsortedToSortedIndex,
 		const openfpm::array<ids_type,dim> & numCellDim)
-	: numPartInCellPrefixSum(numPartInCellPrefixSum),
+	: partUnsortedIndex(partUnsortedIndex),
+	config(config),
+	numPartInCellPrefixSum(numPartInCellPrefixSum),
 	sortedToUnsortedIndex(sortedToUnsortedIndex),
+	unsortedToSortedIndex(unsortedToSortedIndex),
 	rcutNeighborCellOffset(rcutNeighborCellOffset),
-	cellPositionIndex(cid_<dim,ids_type,int>::get_cid(numCellDim,cellPosition)),
-	rcutNeighborCellOffset_i(0),
-	neighborCellIndexAct(rcutNeighborCellOffset.template get<0>(rcutNeighborCellOffset_i))
+	cellPositionIndex(cid_<dim,ids_type,int>::get_cid(numCellDim,cellPosition))
 	{
-		neighborPartIndexStart = numPartInCellPrefixSum.template get<0>(cellPositionIndex+this->neighborCellIndexAct);
+		if (config == CL_NON_SYMMETRIC) {
+			rcutNeighborCellOffset_i = 0;
+		} else if (config == CL_SYMMETRIC) {
+			rcutNeighborCellOffset_i = rcutNeighborCellOffset.size() / 2;
+		}
+		neighborCellIndexAct = rcutNeighborCellOffset.template get<0>(rcutNeighborCellOffset_i);
+
+		if (config == CL_NON_SYMMETRIC) {
+			neighborPartIndexStart = numPartInCellPrefixSum.template get<0>(cellPositionIndex+this->neighborCellIndexAct);
+		} else if (config == CL_SYMMETRIC) {
+			neighborPartIndexStart = unsortedToSortedIndex.template get<0>(partUnsortedIndex);
+		}
 		neighborPartIndexStop = numPartInCellPrefixSum.template get<0>(cellPositionIndex+this->neighborCellIndexAct+1);
 
 		SelectValid();
@@ -203,6 +242,9 @@ class CellList_gpu_ker: public CellDecomposer_gpu_ker<dim,T,ids_type,transform_t
 	//! Sorted to non sorted ids conversion
 	openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> sortedToUnsortedIndex;
 
+	//! Non sorted to sorted ids conversion
+	openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> unsortedToSortedIndex;
+
 	//! Domain particles ids
 	openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> sortedToUnsortedIndexNoGhost;
 
@@ -233,6 +275,7 @@ public:
 	__host__ __device__ inline CellList_gpu_ker(
 		openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> numPartInCellPrefixSum,
 		openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> sortedToUnsortedIndex,
+		openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> unsortedToSortedIndex,
 		openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> sortedToUnsortedIndexNoGhost,
 		openfpm::vector_gpu_ker<aggregate<int>,memory_traits_inte> rcutNeighborCellOffset,
 		const int* __restrict__ boxNeighborCellOffset,
@@ -248,6 +291,7 @@ public:
 	: CellDecomposer_gpu_ker<dim,T,ids_type,transform_type>(unitCellP2,numCellDim,cellPadDim,pointTransform,cellListSpaceBox,cellListGrid,cellShift),
 	numPartInCellPrefixSum(numPartInCellPrefixSum),
 	sortedToUnsortedIndex(sortedToUnsortedIndex),
+	unsortedToSortedIndex(unsortedToSortedIndex),
 	sortedToUnsortedIndexNoGhost(sortedToUnsortedIndexNoGhost),
 	rcutNeighborCellOffset(rcutNeighborCellOffset),
 	boxNeighborCellOffset(boxNeighborCellOffset),
@@ -255,26 +299,28 @@ public:
 	ghostMarker(ghostMarker)
 	{}
 
-	inline __device__ NN_gpu_it_radius<dim,ids_type> getNNIteratorRadius(
-		const grid_key_dx<dim,ids_type> & cellPosition)
+	// TODO compute cell position inside class
+	inline __device__ NN_gpu_it_radius<dim,ids_type> getNNIteratorRadius(const size_t partUnsortedIndex,
+		const grid_key_dx<dim,ids_type> & cellPosition, const unsigned int config)
 	{
-		NN_gpu_it_radius<dim,ids_type> ngi(cellPosition,rcutNeighborCellOffset,numPartInCellPrefixSum,sortedToUnsortedIndex,this->get_div_c());
+		NN_gpu_it_radius<dim,ids_type> ngi(partUnsortedIndex,cellPosition,config,rcutNeighborCellOffset,numPartInCellPrefixSum,sortedToUnsortedIndex,unsortedToSortedIndex,this->get_div_c());
 
 		return ngi;
 	}
 
-	inline __device__ NN_gpu_it_box<dim,ids_type> getNNIteratorBox(
-		const grid_key_dx<dim,ids_type> & cellPosition)
+	// TODO compute cell position inside class
+	inline __device__ NN_gpu_it_box<dim,ids_type> getNNIteratorBox(const size_t partUnsortedIndex,
+		const grid_key_dx<dim,ids_type> & cellPosition, const unsigned int config)
 	{
-		NN_gpu_it_box<dim,ids_type> ngi(cellPosition,numPartInCellPrefixSum,sortedToUnsortedIndex,boxNeighborCellOffset,boxNeighborCellOffsetSize,this->get_div_c());
+		NN_gpu_it_box<dim,ids_type> ngi(partUnsortedIndex,cellPosition,config,numPartInCellPrefixSum,sortedToUnsortedIndex,unsortedToSortedIndex,boxNeighborCellOffset,boxNeighborCellOffsetSize,this->get_div_c());
 
 		return ngi;
 	}
 
-	inline __device__ auto getNNIterator(
-		const grid_key_dx<dim,ids_type> & cellPosition) -> decltype(this->getNNIteratorBox(cellPosition))
+	inline __device__ auto getNNIterator(const size_t partUnsortedIndex,
+		const grid_key_dx<dim,ids_type> & cellPosition, const unsigned int config) -> decltype(this->getNNIteratorBox(partUnsortedIndex, cellPosition, config))
 	{
-		return this->getNNIteratorBox(cellPosition);
+		return this->getNNIteratorBox(partUnsortedIndex, cellPosition, config);
 	}
 
 	inline __device__ openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & getDomainSortIds()
@@ -285,6 +331,11 @@ public:
 	inline __device__ openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & getSortToNonSort()
 	{
 		return sortedToUnsortedIndex;
+	}
+
+	inline __device__ openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & getNonSortToSort()
+	{
+		return unsortedToSortedIndex;
 	}
 
 	/*! \brief Get the number of cells this cell-list contain
@@ -411,6 +462,9 @@ class NN_gpu_it_sparse
 public:
 	__device__ NN_gpu_it_sparse(
 		unsigned int cellIndex,
+		const size_t partUnsortedIndex,
+		const grid_key_dx<dim,ids_type> & cellPosition,
+		const unsigned int config,
 		const openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & neighborCellCountPrefixSum,
 		const openfpm::vector_gpu_ker<aggregate<unsigned int,unsigned int>,memory_traits_inte> & neighborPartIndexFrom_To,
 		const openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & sortedToUnsortedIndex)
@@ -469,6 +523,9 @@ class CellList_gpu_ker<dim,T,ids_type,transform_type,true>: public CellDecompose
 	//! Sorted to non sorted ids conversion
 	openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> sortedToUnsortedIndex;
 
+	//! Non sorted to sorted ids conversion
+	openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> unsortedToSortedIndex;
+
 	//! Domain particles ids
 	openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> sortedToUnsortedIndexNoGhost;
 
@@ -488,6 +545,7 @@ public:
 		openfpm::vector_gpu_ker<aggregate<unsigned int, unsigned int>,memory_traits_inte> neighborPartIndexFrom_To,
 		openfpm::vector_sparse_gpu_ker<aggregate<unsigned int>,int,memory_traits_inte> vecSparseCellIndex_PartIndex,
 		openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> sortedToUnsortedIndex,
+		openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> unsortedToSortedIndex,
 		openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> sortedToUnsortedIndexNoGhost,
 		openfpm::array<T,dim> & unitCellP2,
 		openfpm::array<ids_type,dim> & numCellDim,
@@ -502,6 +560,7 @@ public:
 	neighborCellCountPrefixSum(neighborCellCountPrefixSum),
 	neighborPartIndexFrom_To(neighborPartIndexFrom_To),
 	sortedToUnsortedIndex(sortedToUnsortedIndex),
+	unsortedToSortedIndex(unsortedToSortedIndex),
 	sortedToUnsortedIndexNoGhost(sortedToUnsortedIndexNoGhost),
 	vecSparseCellIndex_PartIndex(vecSparseCellIndex_PartIndex),
 	ghostMarker(ghostMarker)
