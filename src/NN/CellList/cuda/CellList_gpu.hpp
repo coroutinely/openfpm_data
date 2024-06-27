@@ -61,6 +61,9 @@ private:
 	//! \brief Neighborhood cell linear ids (minus middle cell id) for in total (2*boxNeighborNumber+1)**dim cells
 	openfpm::vector_gpu<aggregate<int>> boxNeighborCellOffset;
 
+	//! \brief Symmetric neighborhood cell linear ids (minus middle cell id) for in total (boxNeighborNumber+1)**dim cells
+	openfpm::vector_gpu<aggregate<int>> boxNeighborCellOffsetSym;
+
 	//! /brief unit cell dimensions, given P1 = (0,0...)
 	openfpm::array<T,dim> unitCellP2;
 
@@ -106,9 +109,10 @@ private:
 	void constructNeighborCellOffset(size_t boxNeighborNumber)
 	{
 
-		NNcalc_box(boxNeighborNumber,boxNeighborCellOffset,this->getGrid());
+		NNcalc_box(boxNeighborNumber,boxNeighborCellOffset,boxNeighborCellOffsetSym,this->getGrid());
 
 		boxNeighborCellOffset.template hostToDevice<0>();
+		boxNeighborCellOffsetSym.template hostToDevice<0>();
 	}
 
 	/*! \brief Construct the ids of the particles domain in the sorted array
@@ -479,8 +483,10 @@ public:
 			numPartInCellPrefixSum.toKernel(),
 			sortedToUnsortedIndex.toKernel(),
 			sortedToSortedIndexNoGhost.toKernel(),
+			unsortedToSortedIndex.toKernel(),
 			rcutNeighborCellOffset.toKernel(),
 			boxNeighborCellOffset.toKernel(),
+			boxNeighborCellOffsetSym.toKernel(),
 			unitCellP2,
 			numCellDim,
 			cellPadDim,
@@ -794,6 +800,8 @@ private:
 	//! \brief Neighborhood cell linear ids (minus middle cell id) for in total (2*boxNeighborNumber+1)**dim cells
 	openfpm::vector_gpu<aggregate<int>> boxNeighborCellOffset;
 
+	openfpm::vector_gpu<aggregate<int>> boxNeighborCellOffsetSym;
+
 	//! \brief for each sorted index it show the index in the unordered
 	openfpm::vector_gpu<aggregate<unsigned int>> sortedToUnsortedIndex;
 
@@ -844,9 +852,10 @@ private:
 
 	void constructNeighborCellOffset(size_t boxNeighborNumber)
 	{
-		NNcalc_box(boxNeighborNumber,boxNeighborCellOffset,this->getGrid());
+		NNcalc_box(boxNeighborNumber,boxNeighborCellOffset,boxNeighborCellOffsetSym,this->getGrid());
 
 		boxNeighborCellOffset.template hostToDevice<0>();
+		boxNeighborCellOffsetSym.template hostToDevice<0>();
 	}
 
 	/*! \brief This function construct a sparse cell-list
