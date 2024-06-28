@@ -393,7 +393,7 @@ void NNcalc_box(
 	}
 
 	boxNeighborCellOffset.resize(openfpm::math::pow(2*NNeighbor+1,dim));
-	boxNeighborCellOffsetSym.resize(openfpm::math::pow(NNeighbor+1,dim));
+	boxNeighborCellOffsetSym.resize(openfpm::math::pow(2*NNeighbor+1,dim) / 2 + 1);
 
 	int cellIndexMiddle = cellListGrid.LinId(cellPosMiddle);
 	grid_key_dx_iterator_sub<dim> boxCellGridIt(cellListGrid, cellPosStart, cellPosStop);
@@ -419,6 +419,20 @@ void NNcalc_box(
 
 		++boxCellGridIt;
 	}
+
+	#if 0
+	for (int i = 0; i < openfpm::math::pow(2*NNeighbor+1,dim) / 2 + 1; i++) {
+		std::cout << boxNeighborCellOffsetSym.template get<0>(i) << " ";
+	}
+	std::cout << std::endl;
+	std::cout << openfpm::math::pow(2*NNeighbor+1,dim) / 2 + 1 << std::endl;
+
+	for (int i = 0; i < openfpm::math::pow(2*NNeighbor+1,dim); i++) {
+		std::cout << boxNeighborCellOffset.template get<0>(i) << " ";
+	}
+	std::cout << std::endl;
+	std::cout << openfpm::math::pow(2*NNeighbor+1,dim) << std::endl;
+	#endif
 }
 
 /* NOTE all the implementations

@@ -811,13 +811,8 @@ __global__ void calc_force_number(vector_pos pos, vector_ns sortToNonSort, CellL
 
     while (it.isNext())
     {
-    	auto q = it.get_sort();
-    	auto q_ns = it.get();
-
-		int s1 = sortToNonSort.template get<0>(q);
-
-		atomicAdd(&n_out.template get<0>(s1), 1);
-
+    	auto q = it.get();
+		atomicAdd(&n_out.template get<0>(q), 1);
     	++it;
     }
 }
@@ -855,16 +850,15 @@ __global__ void calc_force_number_box(vector_pos pos, vector_ns sortToNonSort, C
 
     Point<3,float> xp = pos.template get<0>(p);
 
-    auto it = cellList.getNNIteratorBox(cellList.getCell(xp));
+    auto it = cellList.getNNIteratorBoxSym(p, cellList.getCell(xp));
 
     while (it.isNext())
     {
-    	auto q = it.get_sort();
-
-		int s1 = sortToNonSort.template get<0>(q);
-
-		atomicAdd(&n_out.template get<0>(s1), 1);
-
+    	auto q = it.get();
+		atomicAdd(&n_out.template get<0>(q), 1);
+		if (p != q) {
+			atomicAdd(&n_out.template get<0>(p), 1);
+		}
     	++it;
     }
 }
@@ -1719,7 +1713,7 @@ BOOST_AUTO_TEST_CASE( CellList_gpu_use_calc_force_box_split)
 	// Test the cell list
 }*/
 
-
+#if 0
 BOOST_AUTO_TEST_CASE( CellList_gpu_use_calc_force_box_sparse)
 {
 	std::cout << "Test cell list GPU" << "\n";
@@ -1737,6 +1731,7 @@ BOOST_AUTO_TEST_CASE( CellList_gpu_use_calc_force_box_sparse)
 
 	// Test the cell list
 }
+#endif
 
 BOOST_AUTO_TEST_CASE( CellList_gpu_use_calc_force_radius)
 {

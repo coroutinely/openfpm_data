@@ -387,15 +387,11 @@ public:
 		size_t stop = -1)
 	{
 #ifdef __NVCC__
-		if (opt & CL_SYMMETRIC) {
-			std::cout << __FILE__ << ":" << __LINE__ << " symmetric cell list on GPU is not implemented. (And will never be, race conditions make them non suitable for GPU)" << std::endl;
-		}
-
-		else if (opt & CL_LOCAL_SYMMETRIC) {
+		if (opt & CL_LOCAL_SYMMETRIC) {
 			std::cout << __FILE__ << ":" << __LINE__ << " local symmetric cell list on GPU is not implemented" << std::endl;
 		}
 
-		else if (opt & CL_NON_SYMMETRIC) {
+		else if (opt & CL_NON_SYMMETRIC || opt & CL_SYMMETRIC) {
 			construct_dense(vPos,vPrp,gpuContext,ghostMarker,start,stop);
 		}
 #else
@@ -434,15 +430,11 @@ public:
 		size_t stop = -1)
 	{
 #ifdef __NVCC__
-		if (opt & CL_SYMMETRIC) {
-			std::cout << __FILE__ << ":" << __LINE__ << " symmetric cell list on GPU is not implemented. (And will never be, race conditions make them non suitable for GPU)" << std::endl;
-		}
-
-		else if (opt & CL_LOCAL_SYMMETRIC) {
+		if (opt & CL_LOCAL_SYMMETRIC) {
 			std::cout << __FILE__ << ":" << __LINE__ << " local symmetric cell list on GPU is not implemented" << std::endl;
 		}
 
-		else if (opt & CL_NON_SYMMETRIC) {
+		else if (opt & CL_NON_SYMMETRIC || opt & CL_SYMMETRIC) {
 
 			construct_dense(vPos,vPrp,gpuContext,ghostMarker,start,stop);
 
