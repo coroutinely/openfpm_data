@@ -61,6 +61,9 @@ private:
 	//! \brief Neighborhood cell linear ids (minus middle cell id) for in total (2*boxNeighborNumber+1)**dim cells
 	openfpm::vector_gpu<aggregate<int>> boxNeighborCellOffset;
 
+	//! \brief Symmetric neighborhood cell linear ids (minus middle cell id) for in total (boxNeighborNumber+1)**dim cells
+	openfpm::vector_gpu<aggregate<int>> boxNeighborCellOffsetSym;
+
 	//! /brief unit cell dimensions, given P1 = (0,0...)
 	openfpm::array<T,dim> unitCellP2;
 
@@ -106,9 +109,10 @@ private:
 	void constructNeighborCellOffset(size_t boxNeighborNumber)
 	{
 
-		NNcalc_box(boxNeighborNumber,boxNeighborCellOffset,this->getGrid());
+		NNcalc_box(boxNeighborNumber,boxNeighborCellOffset,boxNeighborCellOffsetSym,this->getGrid());
 
 		boxNeighborCellOffset.template hostToDevice<0>();
+		boxNeighborCellOffsetSym.template hostToDevice<0>();
 	}
 
 	/*! \brief Construct the ids of the particles domain in the sorted array
@@ -383,15 +387,11 @@ public:
 		size_t stop = -1)
 	{
 #ifdef __NVCC__
-		if (opt & CL_SYMMETRIC) {
-			std::cout << __FILE__ << ":" << __LINE__ << " symmetric cell list on GPU is not implemented. (And will never be, race conditions make them non suitable for GPU)" << std::endl;
-		}
-
-		else if (opt & CL_LOCAL_SYMMETRIC) {
+		if (opt & CL_LOCAL_SYMMETRIC) {
 			std::cout << __FILE__ << ":" << __LINE__ << " local symmetric cell list on GPU is not implemented" << std::endl;
 		}
 
-		else if (opt & CL_NON_SYMMETRIC) {
+		else if (opt & CL_NON_SYMMETRIC || opt & CL_SYMMETRIC) {
 			construct_dense(vPos,vPrp,gpuContext,ghostMarker,start,stop);
 		}
 #else
@@ -430,15 +430,11 @@ public:
 		size_t stop = -1)
 	{
 #ifdef __NVCC__
-		if (opt & CL_SYMMETRIC) {
-			std::cout << __FILE__ << ":" << __LINE__ << " symmetric cell list on GPU is not implemented. (And will never be, race conditions make them non suitable for GPU)" << std::endl;
-		}
-
-		else if (opt & CL_LOCAL_SYMMETRIC) {
+		if (opt & CL_LOCAL_SYMMETRIC) {
 			std::cout << __FILE__ << ":" << __LINE__ << " local symmetric cell list on GPU is not implemented" << std::endl;
 		}
 
-		else if (opt & CL_NON_SYMMETRIC) {
+		else if (opt & CL_NON_SYMMETRIC || opt & CL_SYMMETRIC) {
 
 			construct_dense(vPos,vPrp,gpuContext,ghostMarker,start,stop);
 
@@ -479,8 +475,10 @@ public:
 			numPartInCellPrefixSum.toKernel(),
 			sortedToUnsortedIndex.toKernel(),
 			sortedToSortedIndexNoGhost.toKernel(),
+			unsortedToSortedIndex.toKernel(),
 			rcutNeighborCellOffset.toKernel(),
 			boxNeighborCellOffset.toKernel(),
+			boxNeighborCellOffsetSym.toKernel(),
 			unitCellP2,
 			numCellDim,
 			cellPadDim,
@@ -628,8 +626,6 @@ public:
 		sortedToUnsortedIndex.swap(clg.sortedToUnsortedIndex);
 		sortedToSortedIndexNoGhost.swap(clg.sortedToSortedIndexNoGhost);
 		unsortedToSortedIndex.swap(clg.unsortedToSortedIndex);
-		boxNeighborCellOffset.swap(clg.boxNeighborCellOffset);
-		rcutNeighborCellOffset.swap(clg.rcutNeighborCellOffset);
 
 		unitCellP2.swap(clg.unitCellP2);
 		numCellDim.swap(clg.numCellDim);
@@ -659,8 +655,6 @@ public:
 		sortedToUnsortedIndex = clg.sortedToUnsortedIndex;
 		sortedToSortedIndexNoGhost = clg.sortedToSortedIndexNoGhost;
 		unsortedToSortedIndex = clg.unsortedToSortedIndex;
-		boxNeighborCellOffset = boxNeighborCellOffset;
-		rcutNeighborCellOffset = rcutNeighborCellOffset;
 
 		unitCellP2 = clg.unitCellP2;
 		numCellDim = clg.numCellDim;
@@ -683,8 +677,6 @@ public:
 		sortedToUnsortedIndex.swap(clg.sortedToUnsortedIndex);
 		sortedToSortedIndexNoGhost.swap(clg.sortedToSortedIndexNoGhost);
 		unsortedToSortedIndex.swap(clg.unsortedToSortedIndex);
-		boxNeighborCellOffset.swap(boxNeighborCellOffset);
-		rcutNeighborCellOffset.swap(rcutNeighborCellOffset);
 
 		unitCellP2 = clg.unitCellP2;
 		numCellDim = clg.numCellDim;
@@ -800,6 +792,8 @@ private:
 	//! \brief Neighborhood cell linear ids (minus middle cell id) for in total (2*boxNeighborNumber+1)**dim cells
 	openfpm::vector_gpu<aggregate<int>> boxNeighborCellOffset;
 
+	openfpm::vector_gpu<aggregate<int>> boxNeighborCellOffsetSym;
+
 	//! \brief for each sorted index it show the index in the unordered
 	openfpm::vector_gpu<aggregate<unsigned int>> sortedToUnsortedIndex;
 
@@ -850,9 +844,10 @@ private:
 
 	void constructNeighborCellOffset(size_t boxNeighborNumber)
 	{
-		NNcalc_box(boxNeighborNumber,boxNeighborCellOffset,this->getGrid());
+		NNcalc_box(boxNeighborNumber,boxNeighborCellOffset,boxNeighborCellOffsetSym,this->getGrid());
 
 		boxNeighborCellOffset.template hostToDevice<0>();
+		boxNeighborCellOffsetSym.template hostToDevice<0>();
 	}
 
 	/*! \brief This function construct a sparse cell-list

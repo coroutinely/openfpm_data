@@ -9,8 +9,10 @@ class NN_gpu_it
 {
 	const openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & numPartInCellPrefixSum;
 	const openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & sortedToUnsortedIndex;
+	const openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & unsortedToSortedIndex;
 	const openfpm::vector_gpu_ker<aggregate<int>,memory_traits_inte> & neighborCellOffset;
 
+	size_t partUnsortedIndex;
 	int neighborCellIndexAct;
 	unsigned int cellPositionIndex;
 	unsigned int boxNeighborCellOffset_i;
@@ -34,14 +36,18 @@ class NN_gpu_it
 	}
 
 public:
+	// non-symmetric constructor
 	inline __device__ NN_gpu_it(
 		const grid_key_dx<dim,ids_type> & cellPosition,
 		const openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & numPartInCellPrefixSum,
 		const openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & sortedToUnsortedIndex,
+		const openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & unsortedToSortedIndex,
 		const openfpm::vector_gpu_ker<aggregate<int>,memory_traits_inte> & neighborCellOffset,
 		const openfpm::array<ids_type,dim> & numCellDim)
-	: numPartInCellPrefixSum(numPartInCellPrefixSum),
+	: partUnsortedIndex(0),
+	numPartInCellPrefixSum(numPartInCellPrefixSum),
 	sortedToUnsortedIndex(sortedToUnsortedIndex),
+	unsortedToSortedIndex(unsortedToSortedIndex),
 	neighborCellOffset(neighborCellOffset),
 	cellPositionIndex(cid_<dim,ids_type,int>::get_cid(numCellDim,cellPosition)),
 	boxNeighborCellOffset_i(0),
@@ -52,6 +58,32 @@ public:
 
 		SelectValid();
 	}
+
+	// symmetric constructor
+	inline __device__ NN_gpu_it(
+		size_t partUnsortedIndex,
+		const grid_key_dx<dim,ids_type> & cellPosition,
+		const openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & numPartInCellPrefixSum,
+		const openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & sortedToUnsortedIndex,
+		const openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> & unsortedToSortedIndex,
+		const openfpm::vector_gpu_ker<aggregate<int>,memory_traits_inte> & neighborCellOffset,
+		const openfpm::array<ids_type,dim> & numCellDim)
+	: partUnsortedIndex(partUnsortedIndex),
+	numPartInCellPrefixSum(numPartInCellPrefixSum),
+	sortedToUnsortedIndex(sortedToUnsortedIndex),
+	unsortedToSortedIndex(unsortedToSortedIndex),
+	neighborCellOffset(neighborCellOffset),
+	cellPositionIndex(cid_<dim,ids_type,int>::get_cid(numCellDim,cellPosition)),
+	boxNeighborCellOffset_i(0),
+	neighborCellIndexAct(neighborCellOffset.template get<0>(0))
+	{
+		//neighborPartIndexStart = numPartInCellPrefixSum.template get<0>(cellPositionIndex+neighborCellIndexAct);
+		neighborPartIndexStart = unsortedToSortedIndex.template get<0>(partUnsortedIndex);
+		neighborPartIndexStop = numPartInCellPrefixSum.template get<0>(cellPositionIndex+neighborCellIndexAct+1);
+
+		SelectValid();
+	}
+
 
 	inline __device__ unsigned int get_sort()
 	{
@@ -85,6 +117,7 @@ public:
 		return boxNeighborCellOffset_i < neighborCellOffset.size();
 	}
 
+	// in symmetric case, use symmetric offset array with non-negative values
 	__device__ inline void nextCell()
 	{
 		++boxNeighborCellOffset_i;
@@ -104,6 +137,9 @@ class CellList_gpu_ker: public CellDecomposer_gpu_ker<dim,T,ids_type,transform_t
 	//! Sorted to non sorted ids conversion
 	openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> sortedToUnsortedIndex;
 
+	//! Non sorted to sorted ids conversion
+	openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> unsortedToSortedIndex;
+
 	//! Domain particles ids
 	openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> sortedToSortedIndexNoGhost;
 
@@ -112,6 +148,8 @@ class CellList_gpu_ker: public CellDecomposer_gpu_ker<dim,T,ids_type,transform_t
 
 	//! Box cells
 	openfpm::vector_gpu_ker<aggregate<int>,memory_traits_inte> boxNeighborCellOffset;
+
+	openfpm::vector_gpu_ker<aggregate<int>,memory_traits_inte> boxNeighborCellOffsetSym;
 
 	//! Ghost particle marker
 	unsigned int ghostMarker;
@@ -131,8 +169,10 @@ public:
 		openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> numPartInCellPrefixSum,
 		openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> sortedToUnsortedIndex,
 		openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> sortedToSortedIndexNoGhost,
+		openfpm::vector_gpu_ker<aggregate<unsigned int>,memory_traits_inte> unsortedToSortedIndex,
 		openfpm::vector_gpu_ker<aggregate<int>,memory_traits_inte> rcutNeighborCellOffset,
 		openfpm::vector_gpu_ker<aggregate<int>,memory_traits_inte> boxNeighborCellOffset,
+		openfpm::vector_gpu_ker<aggregate<int>,memory_traits_inte> boxNeighborCellOffsetSym,
 		openfpm::array<T,dim> unitCellP2,
 		openfpm::array<ids_type,dim> & numCellDim,
 		openfpm::array<ids_type,dim> & cellPadDim,
@@ -145,15 +185,17 @@ public:
 	numPartInCellPrefixSum(numPartInCellPrefixSum),
 	sortedToUnsortedIndex(sortedToUnsortedIndex),
 	sortedToSortedIndexNoGhost(sortedToSortedIndexNoGhost),
+	unsortedToSortedIndex(unsortedToSortedIndex),
 	rcutNeighborCellOffset(rcutNeighborCellOffset),
 	boxNeighborCellOffset(boxNeighborCellOffset),
+	boxNeighborCellOffsetSym(boxNeighborCellOffsetSym),
 	ghostMarker(ghostMarker)
 	{}
 
 	inline __device__ NN_gpu_it<dim,ids_type> getNNIteratorRadius(
 		const grid_key_dx<dim,ids_type> & cellPosition)
 	{
-		NN_gpu_it<dim,ids_type> ngi(cellPosition,numPartInCellPrefixSum,sortedToUnsortedIndex,rcutNeighborCellOffset,this->get_div_c());
+		NN_gpu_it<dim,ids_type> ngi(cellPosition,numPartInCellPrefixSum,sortedToUnsortedIndex,unsortedToSortedIndex,rcutNeighborCellOffset,this->get_div_c());
 
 		return ngi;
 	}
@@ -161,7 +203,26 @@ public:
 	inline __device__ NN_gpu_it<dim,ids_type> getNNIteratorBox(
 		const grid_key_dx<dim,ids_type> & cellPosition)
 	{
-		NN_gpu_it<dim,ids_type> ngi(cellPosition,numPartInCellPrefixSum,sortedToUnsortedIndex,boxNeighborCellOffset,this->get_div_c());
+		NN_gpu_it<dim,ids_type> ngi(cellPosition,numPartInCellPrefixSum,sortedToUnsortedIndex,unsortedToSortedIndex,boxNeighborCellOffset,this->get_div_c());
+
+		return ngi;
+	}
+
+	// FIXME: need symmetric radius neighbours array
+	inline __device__ NN_gpu_it<dim,ids_type> getNNIteratorRadiusSym(
+		size_t partUnsortedIndex,
+		const grid_key_dx<dim,ids_type> & cellPosition)
+	{
+		NN_gpu_it<dim,ids_type> ngi(partUnsortedIndex,cellPosition,numPartInCellPrefixSum,sortedToUnsortedIndex,unsortedToSortedIndex,rcutNeighborCellOffset,this->get_div_c());
+
+		return ngi;
+	}
+
+	inline __device__ NN_gpu_it<dim,ids_type> getNNIteratorBoxSym(
+		size_t partUnsortedIndex,
+		const grid_key_dx<dim,ids_type> & cellPosition)
+	{
+		NN_gpu_it<dim,ids_type> ngi(partUnsortedIndex,cellPosition,numPartInCellPrefixSum,sortedToUnsortedIndex,unsortedToSortedIndex,boxNeighborCellOffsetSym,this->get_div_c());
 
 		return ngi;
 	}

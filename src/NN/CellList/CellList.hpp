@@ -378,6 +378,7 @@ template<unsigned int dim, typename vector_type>
 void NNcalc_box(
 	size_t NNeighbor,
 	vector_type & boxNeighborCellOffset,
+	vector_type & boxNeighborCellOffsetSym,
 	const grid_sm<dim,void> & cellListGrid)
 {
 	grid_key_dx<dim> cellPosStart;
@@ -392,24 +393,45 @@ void NNcalc_box(
 	}
 
 	boxNeighborCellOffset.resize(openfpm::math::pow(2*NNeighbor+1,dim));
+	boxNeighborCellOffsetSym.resize(openfpm::math::pow(2*NNeighbor+1,dim) / 2 + 1);
 
 	int cellIndexMiddle = cellListGrid.LinId(cellPosMiddle);
 	grid_key_dx_iterator_sub<dim> boxCellGridIt(cellListGrid, cellPosStart, cellPosStop);
 
 	size_t index = 0;
+	size_t indexSym = 0;
 
 	// start iteration with own cell
 	boxNeighborCellOffset.template get<0>(index++) = 0;
+	boxNeighborCellOffsetSym.template get<0>(indexSym++) = 0;
 
 	while (boxCellGridIt.isNext())
 	{
 		int cellIndex = (int)cellListGrid.LinId(boxCellGridIt.get()) - cellIndexMiddle;
 
-		if (cellIndex != 0)
+		if (cellIndex != 0) {
 			boxNeighborCellOffset.template get<0>(index++) = cellIndex;
-
+			if (cellIndex > 0) {
+				boxNeighborCellOffsetSym.template get<0>(indexSym++) = cellIndex;
+			}
+		}
+			
 		++boxCellGridIt;
 	}
+
+	#if 0
+	for (int i = 0; i < openfpm::math::pow(2*NNeighbor+1,dim) / 2 + 1; i++) {
+		std::cout << boxNeighborCellOffsetSym.template get<0>(i) << " ";
+	}
+	std::cout << std::endl;
+	std::cout << openfpm::math::pow(2*NNeighbor+1,dim) / 2 + 1 << std::endl;
+
+	for (int i = 0; i < openfpm::math::pow(2*NNeighbor+1,dim); i++) {
+		std::cout << boxNeighborCellOffset.template get<0>(i) << " ";
+	}
+	std::cout << std::endl;
+	std::cout << openfpm::math::pow(2*NNeighbor+1,dim) << std::endl;
+	#endif
 }
 
 /* NOTE all the implementations
